@@ -1,73 +1,67 @@
 package net.craftersland.bridge.inventory;
 
 import java.util.ArrayList;
-import java.util.List;
+import java.util.Collection;
 
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
 public class BackgroundTask {
 
-    private Inv m;
+	private final Inv m;
 
-    public BackgroundTask(Inv m) {
-        this.m = m;
-        runTask();
-    }
+	public BackgroundTask(Inv m) {
+		this.m = m;
+		runTask();
+	}
 
-    private void runTask() {
-        if (m.getConfigHandler().getBoolean("General.saveDataTask.enabled")) {
-            Inv.log.info("Data save task is enabled.");
+	private void runTask() {
+		if (m.getConfigHandler().getBoolean("General.saveDataTask.enabled")) {
+			Inv.log.info("Data save task is enabled.");
+			long intervalTicks = m.getConfigHandler().getInteger("General.saveDataTask.interval") * 60L * 20L;
 
-            long intervalTicks = m.getConfigHandler().getInteger("General.saveDataTask.interval") * 60L * 20L;
+			m.getServer().getGlobalRegionScheduler().runAtFixedRate(
+					m,
+					task -> runSaveData(),
+					intervalTicks,
+					intervalTicks
+			);
+		} else {
+			Inv.log.info("Data save task is disabled.");
+		}
+	}
 
-            // Folia Uyumlu Scheduler:
-            m.getServer().getGlobalRegionScheduler().runAtFixedRate(
-                m,
-                task -> runSaveData(),
-                intervalTicks,
-                intervalTicks
-            );
+	private void runSaveData() {
+		if (m.getConfigHandler().getBoolean("General.saveDataTask.enabled")) {
+			Collection<? extends Player> onlinePlayers = Bukkit.getOnlinePlayers();
+			if (!onlinePlayers.isEmpty()) {
+				if (!m.getConfigHandler().getBoolean("General.saveDataTask.hideLogMessages")) {
+					Inv.log.info("Saving online players data...");
+				}
 
-        } else {
-            Inv.log.info("Data save task is disabled.");
-        }
-    }
+				for (Player p : new ArrayList<>(onlinePlayers)) {
+					if (p.isOnline()) {
+						m.getInventoryDataHandler().saveInv(p, false);
+					}
+				}
 
-    private void runSaveData() {
-        if (m.getConfigHandler().getBoolean("General.saveDataTask.enabled")) {
-            if (!Bukkit.getOnlinePlayers().isEmpty()) {
-                List<Player> onlinePlayers = new ArrayList<>(Bukkit.getOnlinePlayers());
+				if (!m.getConfigHandler().getBoolean("General.saveDataTask.hideLogMessages")) {
+					Inv.log.info("Data save complete for " + onlinePlayers.size() + " players.");
+				}
+			}
+		}
+	}
 
-                if (!m.getConfigHandler().getBoolean("General.saveDataTask.hideLogMessages")) {
-                    Inv.log.info("Saving online players data...");
-                }
+	public void onShutDownDataSave() {
+		Inv.log.info("Saving online players data...");
+		Collection<? extends Player> onlinePlayers = Bukkit.getOnlinePlayers();
 
-                for (Player p : onlinePlayers) {
-                    if (p.isOnline()) {
-                        m.getInventoryDataHandler().onDataSaveFunction(p, false, "false", null, null);
-                    }
-                }
+		for (Player p : new ArrayList<>(onlinePlayers)) {
+			if (p.isOnline()) {
+				m.getInventoryDataHandler().saveInv(p, true);
+			}
+		}
 
-                if (!m.getConfigHandler().getBoolean("General.saveDataTask.hideLogMessages")) {
-                    Inv.log.info("Data save complete for " + onlinePlayers.size() + " players.");
-                }
-
-                onlinePlayers.clear();
-            }
-        }
-    }
-
-    public void onShutDownDataSave() {
-        Inv.log.info("Saving online players data...");
-        List<Player> onlinePlayers = new ArrayList<>(Bukkit.getOnlinePlayers());
-
-        for (Player p : onlinePlayers) {
-            if (p.isOnline()) {
-                m.getInventoryDataHandler().onDataSaveFunction(p, false, "true", null, null);
-            }
-        }
-
-        Inv.log.info("Data save complete for " + onlinePlayers.size() + " players.");
-    }
+		Inv.log.info("Data save complete for " + onlinePlayers.size() + " players.");
+	}
 }

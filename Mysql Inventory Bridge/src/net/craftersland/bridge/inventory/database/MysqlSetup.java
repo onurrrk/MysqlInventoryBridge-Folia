@@ -219,7 +219,170 @@ public class MysqlSetup {
 						} catch (Exception e) {
 							e.printStackTrace();
 						} finally {
-							try {
+	package net.craftersland.bridge.inventory.database;
+
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.Properties;
+import net.craftersland.bridge.inventory.Inv;
+import org.bukkit.Bukkit;
+
+public class MysqlSetup {
+
+	private Connection conn = null;
+	private final Inv eco;
+
+	public MysqlSetup(Inv eco) {
+		this.eco = eco;
+		connectToDatabase();
+		setupDatabase();
+		updateTables();
+		databaseMaintenanceTask();
+	}
+
+	public void connectToDatabase() {
+		Inv.log.info("Connecting to the database...");
+		try {
+			Class.forName("com.mysql.cj.jdbc.Driver");
+			Properties properties = new Properties();
+			properties.setProperty("user", eco.getConfigHandler().getString("database.mysql.user"));
+			properties.setProperty("password", eco.getConfigHandler().getString("database.mysql.password"));
+			properties.setProperty("autoReconnect", "true");
+			properties.setProperty("verifyServerCertificate", "false");
+			properties.setProperty("useSSL", String.valueOf(eco.getConfigHandler().getBoolean("database.mysql.sslEnabled")));
+			properties.setProperty("requireSSL", String.valueOf(eco.getConfigHandler().getBoolean("database.mysql.sslEnabled")));
+
+			conn = DriverManager.getConnection("jdbc:mysql://" + eco.getConfigHandler().getString("database.mysql.host") + ":" + eco.getConfigHandler().getInteger("database.mysql.port") + "/" + eco.getConfigHandler().getString("database.mysql.databaseName"), properties);
+
+		} catch (ClassNotFoundException e) {
+			Inv.log.severe("Could not locate drivers for mysql! Error: " + e.getMessage());
+		} catch (SQLException e) {
+			Inv.log.severe("Could not connect to mysql database! Error: " + e.getMessage());
+		}
+		Inv.log.info("Database connection successful!");
+	}
+
+	public void setupDatabase() {
+		if (conn != null) {
+			try (PreparedStatement query = conn.prepareStatement("CREATE TABLE IF NOT EXISTS `" + eco.getConfigHandler().getString("database.mysql.tableName") + "` (id int(10) AUTO_INCREMENT, player_uuid char(36) NOT NULL UNIQUE, player_name varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL, inventory LONGTEXT NOT NULL, armor LONGTEXT NOT NULL, sync_complete varchar(5) NOT NULL, last_seen char(13) NOT NULL, PRIMARY KEY(id));")) {
+				query.execute();
+			} catch (SQLException e) {
+				e.printStackTrace();
+				Inv.log.severe("Error creating tables! Error: " + e.getMessage());
+			}
+		}
+	}
+
+	public Connection getConnection() {
+		checkConnection();
+		return conn;
+	}
+
+	public void checkConnection() {
+		try {
+			if (conn == null || !conn.isValid(3) || conn.isClosed()) {
+				Inv.log.warning("Connection is not valid. Reconnecting...");
+				reConnect();
+			}
+		} catch (SQLException e) {
+			Inv.log.severe("Could not reconnect to Database! Error: " + e.getMessage());
+		}
+	}
+
+	public boolean reConnect() {
+		try {
+			long start = System.currentTimeMillis();
+			Inv.log.info("Attempting to establish a connection to the MySQL server!");
+			Class.forName("com.mysql.cj.jdbc.Driver");
+			Properties properties = new Properties();
+			properties.setProperty("user", eco.getConfigHandler().getString("database.mysql.user"));
+			properties.setProperty("password", eco.getConfigHandler().getString("database.mysql.password"));
+			properties.setProperty("autoReconnect", "true");
+			properties.setProperty("verifyServerCertificate", "false");
+			properties.setProperty("useSSL", String.valueOf(eco.getConfigHandler().getBoolean("database.mysql.sslEnabled")));
+			properties.setProperty("requireSSL", String.valueOf(eco.getConfigHandler().getBoolean("database.mysql.sslEnabled")));
+
+			conn = DriverManager.getConnection("jdbc:mysql://" + eco.getConfigHandler().getString("database.mysql.host") + ":" + eco.getConfigHandler().getInteger("database.mysql.port") + "/" + eco.getConfigHandler().getString("database.mysql.databaseName"), properties);
+			long end = System.currentTimeMillis();
+			Inv.log.info("Connection to MySQL server established!");
+			Inv.log.info("Connection took " + (end - start) + "ms!");
+			return true;
+		} catch (Exception e) {
+			Inv.log.severe("Error re-connecting to the database! Error: " + e.getMessage());
+			return false;
+		}
+	}
+
+	public void closeConnection() {
+		try {
+			if (conn != null && !conn.isClosed()) {
+				Inv.log.info("Closing database connection...");
+				conn.close();
+			}
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}
+	}
+
+	private void updateTables() {
+		if (conn != null) {
+			try {
+				DatabaseMetaData md = conn.getMetaData();
+
+				try (ResultSet rs1 = md.getColumns(null, null, eco.getConfigHandler().getString("database.mysql.tableName"), "inventory")) {
+					if (rs1.next() && "VARCHAR".equals(rs1.getString("TYPE_NAME"))) {
+						try (PreparedStatement query1 = conn.prepareStatement("ALTER TABLE `" + eco.getConfigHandler().getString("database.mysql.tableName") + "` MODIFY inventory LONGTEXT NOT NULL;")) {
+							query1.execute();
+						}
+					}
+				}
+
+				try (ResultSet rs2 = md.getColumns(null, null, eco.getConfigHandler().getString("database.mysql.tableName"), "armor")) {
+					if (rs2.next() && "VARCHAR".equals(rs2.getString("TYPE_NAME"))) {
+						try (PreparedStatement query2 = conn.prepareStatement("ALTER TABLE `" + eco.getConfigHandler().getString("database.mysql.tableName") + "` MODIFY armor LONGTEXT NOT NULL;")) {
+							query2.execute();
+						}
+					}
+				}
+
+				try (ResultSet rs3 = md.getColumns(null, null, eco.getConfigHandler().getString("database.mysql.tableName"), "sync_complete")) {
+					if (!rs3.next()) {
+						try (PreparedStatement query3 = conn.prepareStatement("ALTER TABLE `" + eco.getConfigHandler().getString("database.mysql.tableName") + "` ADD sync_complete varchar(5) NOT NULL DEFAULT 'true';")) {
+							query3.execute();
+						}
+					}
+				}
+			} catch (SQLException e) {
+				Inv.log.severe("Error updating table! Error: " + e.getMessage());
+			}
+		}
+	}
+
+	private void databaseMaintenanceTask() {
+		if (eco.getConfigHandler().getBoolean("database.maintenance.enabled")) {
+			Bukkit.getGlobalRegionScheduler().runDelayed(eco, task -> {
+				if (conn != null) {
+					long inactivityDays = eco.getConfigHandler().getInteger("database.maintenance.inactivity");
+					long inactivityMils = inactivityDays * 24 * 60 * 60 * 1000;
+					long inactiveTime = System.currentTimeMillis() - inactivityMils;
+					Inv.log.info("Database maintenance task started...");
+
+					try (PreparedStatement preparedStatement = conn.prepareStatement("DELETE FROM `" + eco.getConfigHandler().getString("database.mysql.tableName") + "` WHERE `last_seen` < ?")) {
+						preparedStatement.setString(1, String.valueOf(inactiveTime));
+						preparedStatement.execute();
+					} catch (SQLException e) {
+						e.printStackTrace();
+					}
+					Inv.log.info("Database maintenance complete!");
+				}
+			}, 100 * 20L);
+		}
+	}
+}						try {
 								if (preparedStatement != null) {
 									preparedStatement.close();
 								}

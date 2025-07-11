@@ -44,7 +44,7 @@ public class ConfigHandler {
 			inv.getLogger().severe("Could not locate " + key + " in the config.yml inside of the " + Inv.pluginName + " folder! (Try generating a new one by deleting the current)");
 			return "errorCouldNotLocateInConfigYml:" + key;
 		} else {
-			return inv.getConfig().getString(key).replaceAll("&", "�");
+			return inv.getConfig().getString(key).replaceAll("&", "§");
 		}
 	}
 	
@@ -57,13 +57,13 @@ public class ConfigHandler {
 		}
 	}
 	
-	public Boolean getBoolean(String key) {
-		if (!inv.getConfig().contains(key)) {
-			inv.getLogger().severe("Could not locate " + key + " in the config.yml inside of the " + Inv.pluginName + " folder! (Try generating a new one by deleting the current)");
-			return null;
-		} else {
-			return inv.getConfig().getBoolean(key);
-		}
-	}
+public boolean getBoolean(String key) {
+    if (!inv.getConfig().contains(key)) {
+        inv.getLogger().severe("Could not locate " + key + " in the config.yml inside of the " + Inv.pluginName + " folder! (Try generating a new one by deleting the current)");
+        return false; // null dönme! Hata logunu bas, ama false dön.
+    } else {
+        return inv.getConfig().getBoolean(key);
+    }
+}
 
 }

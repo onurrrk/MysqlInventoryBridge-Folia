@@ -1,20 +1,22 @@
 package net.craftersland.bridge.inventory.objects;
 
-import org.bukkit.entity.Player;
 import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
+import org.bukkit.entity.Player;
 import net.craftersland.bridge.inventory.Inv;
 
-public class SyncCompleteTask {
+public class InventorySyncTask {
 
-	private Inv pd;
-	private long startTime;
-	private Player p;
+	private final Inv pd;
+	private final long startTime;
+	private final Player p;
 	private boolean inProgress = false;
+	private final InventorySyncData syncD;
 
-	public SyncCompleteTask(Inv pd, long start, Player player) {
+	public InventorySyncTask(Inv pd, long start, Player player, InventorySyncData syncData) {
 		this.pd = pd;
 		this.startTime = start;
 		this.p = player;
+		this.syncD = syncData;
 	}
 
 	public void run(ScheduledTask task) {
@@ -29,18 +31,14 @@ public class SyncCompleteTask {
 
 		inProgress = true;
 
-		if (pd.getInventoryDataHandler().isSyncComplete(p)) {
-			if (!pd.getConfigHandler().getString("ChatMessages.syncComplete").isEmpty()) {
-				p.sendMessage(pd.getConfigHandler().getStringWithColor("ChatMessages.syncComplete"));
-			}
-			pd.getSoundHandler().sendLevelUpSound(p);
+		DatabaseInventoryData data = pd.getInvMysqlInterface().getData(p);
+
+		if (data.getSyncStatus().equals("true") ||
+				(System.currentTimeMillis() - Long.parseLong(data.getLastSeen()) >= 600 * 1000) ||
+				(System.currentTimeMillis() - startTime >= 22 * 1000)) {
+
+			pd.getInventoryDataHandler().setPlayerData(p, data, syncD, true);
 			task.cancel();
-		} else {
-			if (System.currentTimeMillis() - startTime >= 40 * 1000) {
-				task.cancel();
-			} else if (System.currentTimeMillis() - startTime >= 20 * 1000) {
-				pd.getInvMysqlInterface().setSyncStatus(p, "true");
-			}
 		}
 
 		inProgress = false;

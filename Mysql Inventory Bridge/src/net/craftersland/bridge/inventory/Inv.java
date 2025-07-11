@@ -52,16 +52,27 @@ public class Inv extends JavaPlugin {
 	}
 	
 	@Override
-    public void onDisable() {
-		isDisabling = true;
-		Bukkit.getScheduler().cancelTasks(this);
-		HandlerList.unregisterAll(this);
-		if (databaseManager.getConnection() != null) {
-			bt.onShutDownDataSave();
-			databaseManager.closeConnection();
-		}
-		log.info(pluginName + " is disabled!");
-	}
+@Override
+public void onDisable() {
+    isDisabling = true;
+
+    // Folia uyumlu
+    try {
+        Bukkit.getScheduler().cancelTasks(this);
+    } catch (UnsupportedOperationException e) {
+        log.warning("Folia üzerinde Bukkit scheduler iptali desteklenmiyor.");
+    }
+
+    HandlerList.unregisterAll(this);
+
+    if (databaseManager.getConnection() != null) {
+        bt.onShutDownDataSave();
+        databaseManager.closeConnection();
+    }
+
+    log.info(pluginName + " is disabled!");
+}
+
 	
 	public ConfigHandler getConfigHandler() {
 		return configHandler;

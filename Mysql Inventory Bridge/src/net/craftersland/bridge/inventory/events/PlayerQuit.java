@@ -3,8 +3,10 @@ package net.craftersland.bridge.inventory.events;
 import net.craftersland.bridge.inventory.Inv;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerQuitEvent;
+import java.util.logging.Level;
 
 public class PlayerQuit implements Listener {
 
@@ -14,16 +16,19 @@ public class PlayerQuit implements Listener {
 		this.inv = inv;
 	}
 
-	@EventHandler
+	@EventHandler(priority = EventPriority.MONITOR)
 	public void onDisconnect(final PlayerQuitEvent event) {
 		if (Inv.isDisabling) {
 			return;
 		}
 
 		final Player p = event.getPlayer();
-
-		p.getScheduler().run(inv, task -> {
+		
+		try {
 			inv.getInventoryDataHandler().saveInv(p, true);
-		}, null);
+			inv.getInventoryDataHandler().dataCleanup(p);
+		} catch (Exception e) {
+			inv.getLogger().log(Level.SEVERE, "Oyuncu " + p.getName() + " için çıkışta senkron kayıt sırasında hata oluştu!", e);
+		}
 	}
 }

@@ -25,7 +25,9 @@ public class InventorySyncTask {
 		}
 
 		if (p == null || !p.isOnline()) {
-			task.cancel();
+			if (task != null) {
+				task.cancel();
+			}
 			return;
 		}
 
@@ -37,8 +39,11 @@ public class InventorySyncTask {
 				(System.currentTimeMillis() - Long.parseLong(data.getLastSeen()) >= 600 * 1000) ||
 				(System.currentTimeMillis() - startTime >= 22 * 1000)) {
 
-			pd.getInventoryDataHandler().setPlayerData(p, data, syncD, true);
-			task.cancel();
+			pd.getInventoryDataHandler().setPlayerData(p, data, syncD);
+			
+			if (task != null) {
+				task.cancel();
+			}
 		}
 
 		inProgress = false;

@@ -180,7 +180,162 @@ public class InventoryDataHandler {
 	}
 
 	public String encodeItems(ItemStack[] items) {
+	package net.craftersland.bridge.inventory;
+
+import java.util.HashSet;
+import java.util.Set;
+import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
+import net.craftersland.bridge.inventory.objects.DatabaseInventoryData;
+import net.craftersland.bridge.inventory.objects.InventorySyncData;
+import net.craftersland.bridge.inventory.objects.InventorySyncTask;
+import java.util.logging.Level;
+
+public class InventoryDataHandler {
+
+	private final Inv pd;
+	private final Set<Player> playersInSync = new HashSet<>();
+
+	public InventoryDataHandler(Inv pd) {
+		this.pd = pd;
+	}
+
+	public boolean isSyncComplete(Player p) {
+		return playersInSync.contains(p);
+	}
+
+	public void dataCleanup(Player p) {
+		playersInSync.remove(p);
+	}
+
+	public void saveInv(Player p, boolean onQuit) {
+		String invSerial = encodeItems(p.getInventory().getContents());
+		String armorSerial = pd.getConfigHandler().getBoolean("General.syncArmorEnabled") ? encodeItems(p.getInventory().getArmorContents()) : "none";
+		
+		String syncStatus = onQuit ? "false" : "true";
+		
+		pd.getInvMysqlInterface().setData(p, invSerial, armorSerial, syncStatus);
+	}
+
+	public void onJoinFunction(final Player p) {
+		if (Inv.isDisabling || playersInSync.contains(p)) {
+			return;
+		}
+
+		if (pd.getInvMysqlInterface().hasAccount(p)) {
+			pd.getLogger().info("Oyuncu " + p.getName() + " için hesap bulundu. Veritabanından veri yükleniyor...");
+			
+			DatabaseInventoryData data = pd.getInvMysqlInterface().getData(p);
+			if (data == null) {
+				pd.getLogger().severe("Kritik Hata: " + p.getName() + " için veritabanından veri okunamadı! Veri kaybını önlemek için işlem durduruldu.");
+				return;
+			}
+			
+			final InventorySyncData syncData = new InventorySyncData();
+			backupAndReset(p, syncData);
+			setPlayerData(p, data, syncData);
+			
+		} else {
+			pd.getLogger().info("Yeni oyuncu " + p.getName() + ". Veritabanında hesap oluşturuluyor...");
+			saveInv(p, false);
+			playersInSync.add(p);
+		}
+	}
+
+	public void setPlayerData(final Player p, DatabaseInventoryData data, InventorySyncData syncData) {
+		if (playersInSync.contains(p)) {
+			return;
+		}
+
+		try {
+			if (Inv.is19Server) {
+				if (pd.getConfigHandler().getBoolean("General.syncArmorEnabled")) {
+					setInventory(p, data, syncData);
+				} else {
+					setInventoryNew(p, data, syncData);
+				}
+			} else {
+				setInventory(p, data, syncData);
+				if (pd.getConfigHandler().getBoolean("General.syncArmorEnabled")) {
+					setArmor(p, data, syncData);
+				}
+			}
+			pd.getInvMysqlInterface().setSyncStatus(p, "true");
+			playersInSync.add(p);
+		} catch (Exception e) {
+			pd.getLogger().log(Level.SEVERE, p.getName() + " için envanter yüklenirken hata oluştu. Yedek geri yükleniyor.", e);
+			restoreBackup(p, syncData);
+		}
+	}
+
+	private void backupAndReset(Player p, InventorySyncData syncData) {
+		syncData.setBackupInventory(p.getInventory().getContents());
+		p.getInventory().clear();
+
+		if (pd.getConfigHandler().getBoolean("General.syncArmorEnabled")) {
+			syncData.setBackupArmor(p.getInventory().getArmorContents());
+			p.getInventory().setHelmet(null);
+			p.getInventory().setChestplate(null);
+			p.getInventory().setLeggings(null);
+			p.getInventory().setBoots(null);
+		}
+		p.updateInventory();
+	}
+
+	private void restoreBackup(Player p, InventorySyncData syncData) {
+		if (syncData.getBackupInventory() != null) {
+			p.getInventory().setContents(syncData.getBackupInventory());
+		}
+		if (syncData.getBackupArmor() != null) {
+			p.getInventory().setArmorContents(syncData.getBackupArmor());
+		}
+		p.updateInventory();
+		p.sendMessage(pd.getConfigHandler().getStringWithColor("ChatMessages.inventorySyncError"));
+		pd.getSoundHandler().sendPlingSound(p);
+		p.sendMessage(pd.getConfigHandler().getStringWithColor("ChatMessages.inventorySyncBackup"));
+	}
+
+	private void setInventory(final Player p, DatabaseInventoryData data, InventorySyncData syncData) throws Exception {
+		if (!"none".equals(data.getRawInventory())) {
+			p.getInventory().setContents(decodeItems(data.getRawInventory()));
+		}
+		p.updateInventory();
+	}
+
+	private void setInventoryNew(final Player p, DatabaseInventoryData data, InventorySyncData syncData) throws Exception {
+		if (!"none".equals(data.getRawInventory())) {
+			p.getInventory().setContents(decodeItems(data.getRawInventory()));
+		}
+		p.updateInventory();
+	}
+
+	private void setArmor(final Player p, DatabaseInventoryData data, InventorySyncData syncData) throws Exception {
+		if (!"none".equals(data.getRawArmor())) {
+			p.getInventory().setArmorContents(decodeItems(data.getRawArmor()));
+		}
+		p.updateInventory();
+	}
+
+	public String encodeItems(ItemStack[] items) {
 		if (pd.useProtocolLib && pd.getConfigHandler().getBoolean("General.enableModdedItemsSupport")) {
+			return InventoryUtils.saveModdedStacksData(items);
+		} else {
+			return InventoryUtils.itemStackArrayToBase64(items);
+		}
+	}
+
+	public ItemStack[] decodeItems(String data) throws Exception {
+		if (pd.useProtocolLib && pd.getConfigHandler().getBoolean("General.enableModdedItemsSupport")) {
+			ItemStack[] it = InventoryUtils.restoreModdedStacks(data);
+			if (it == null) {
+				it = InventoryUtils.itemStackArrayFromBase64(data);
+			}
+			return it;
+		} else {
+			return InventoryUtils.itemStackArrayFromBase64(data);
+		}
+	}
+}	if (pd.useProtocolLib && pd.getConfigHandler().getBoolean("General.enableModdedItemsSupport")) {
 			return InventoryUtils.saveModdedStacksData(items);
 		} else {
 			return InventoryUtils.itemStackArrayToBase64(items);
